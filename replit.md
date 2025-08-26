@@ -73,8 +73,9 @@ Currently implements a simplified authentication system with:
 - **STLIX Upload API**: File upload service for image-to-video generation
 
 ## Database
-- **PostgreSQL**: Primary data storage via Neon serverless postgres
+- **TiDB MySQL**: Primary data storage via TiDB Cloud (MySQL-compatible)
 - **Drizzle ORM**: Type-safe database operations and migrations
+- **Session Storage**: Memory-based sessions (no PostgreSQL dependency)
 
 ## UI & Styling
 - **Radix UI**: Accessible component primitives

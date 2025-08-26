@@ -1,9 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import session from "express-session";
-import ConnectPgSimple from "connect-pg-simple";
+// Removed ConnectPgSimple - using memory sessions for MySQL compatibility
 import { mysqlStorage } from "./storage-mysql";
-import { db } from "./db";
+// Removed db import - using mysqlStorage directly
 import { insertVideoGenerationSchema, insertUserSchema, type User } from "../shared/schema-mysql";
 import { z } from "zod";
 import multer from "multer";
@@ -341,16 +341,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // TODO: Fix auto refresh for MySQL
   // startAutoRefresh();
   
-  // Configure PostgreSQL session store for persistent sessions
-  const PgSession = ConnectPgSimple(session);
-  
-  // Session middleware with PostgreSQL store
+  // Session middleware with memory store for MySQL compatibility
   app.use(session({
-    store: new PgSession({
-      conString: process.env.DATABASE_URL,
-      tableName: 'session',
-      createTableIfMissing: true
-    }),
     secret: process.env.SESSION_SECRET || 'your-session-secret-change-in-production',
     resave: false,
     saveUninitialized: false,
