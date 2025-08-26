@@ -1,0 +1,137 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'android_app/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'android_app/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup Java
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.16.5'
+        channel: 'stable'
+
+    - name: Get Flutter Dependencies
+      working-directory: android_app
+      run: flutter pub get
+
+    - name: Generate Code
+      working-directory: android_app
+      run: flutter packages pub run build_runner build --delete-conflicting-outputs
+
+    - name: Analyze Flutter Code
+      working-directory: android_app
+      run: flutter analyze
+
+    - name: Run Flutter Tests
+      working-directory: android_app
+      run: flutter test
+
+    - name: Build APK (Debug)
+      working-directory: android_app
+      run: flutter build apk --debug
+
+    - name: Build APK (Release)
+      working-directory: android_app
+      run: flutter build apk --release
+
+    - name: Build App Bundle (Release)
+      working-directory: android_app
+      run: flutter build appbundle --release
+
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: stlix-debug-apk
+        path: android_app/build/app/outputs/flutter-apk/app-debug.apk
+
+    - name: Upload Release APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: stlix-release-apk
+        path: android_app/build/app/outputs/flutter-apk/app-release.apk
+
+    - name: Upload App Bundle
+      uses: actions/upload-artifact@v3
+      with:
+        name: stlix-app-bundle
+        path: android_app/build/app/outputs/bundle/release/app-release.aab
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Download Release APK
+      uses: actions/download-artifact@v3
+      with:
+        name: stlix-release-apk
+        path: ./
+
+    - name: Download App Bundle
+      uses: actions/download-artifact@v3
+      with:
+        name: stlix-app-bundle
+        path: ./
+
+    - name: Get Version
+      id: version
+      run: |
+        version=$(grep 'version:' android_app/pubspec.yaml | cut -d ' ' -f 2)
+        echo "version=$version" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        name: STLix Android v${{ steps.version.outputs.version }}
+        body: |
+          ## STLix Android App Release v${{ steps.version.outputs.version }}
+          
+          ### Tính năng chính:
+          - 🎥 Tạo video AI từ văn bản và hình ảnh
+          - 🖼️ Các công cụ xử lý ảnh AI (PhotoAI)
+          - 👤 Hệ thống đăng nhập/đăng ký bảo mật
+          - ⚙️ Panel quản trị cho admin
+          - 💳 Hệ thống credits và theo dõi sử dụng
+          
+          ### Cài đặt:
+          1. Tải file APK
+          2. Bật "Cài đặt từ nguồn không xác định" trên thiết bị Android
+          3. Cài đặt APK
+          4. Đăng ký tài khoản và bắt đầu sử dụng!
+          
+          ### Hỗ trợ:
+          - Android 5.0+ (API level 21+)
+          - Kết nối internet để sử dụng các tính năng AI
+        files: |
+          app-release.apk
+          app-release.aab
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}

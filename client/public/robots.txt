@@ -1,0 +1,45 @@
+# Robots.txt for Starlix AI Video Generator
+# Website: https://starlix.replit.app
+# Description: Tạo video AI miễn phí từ văn bản và hình ảnh
+
+User-agent: *
+Allow: /
+
+# Allow all important pages for SEO
+Allow: /register
+Allow: /login  
+Allow: /terms
+Allow: /privacy
+Allow: /sitemap.xml
+Allow: /og-image.jpg
+Allow: /favicon.ico
+
+# Disallow admin and API pages only
+Disallow: /admin
+Disallow: /api/
+
+# Special rules for search engine crawlers
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 1
+
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 1
+
+User-agent: facebookexternalhit
+Allow: /
+Allow: /og-image.jpg
+
+# Block aggressive SEO crawlers
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+# Sitemaps
+Sitemap: https://starlix.replit.app/sitemap.xml
