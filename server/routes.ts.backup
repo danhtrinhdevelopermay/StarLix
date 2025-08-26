@@ -83,8 +83,8 @@ async function authenticateExternalApiKey(req: Request, res: Response, next: Nex
   }
 
   try {
-    // Using mysqlStorage directly
-    const externalApiKey = await mysqlStorage.getExternalApiKeyByKey(apiKey);
+    const storageInstance = await storage();
+    const externalApiKey = await storageInstance.getExternalApiKeyByKey(apiKey);
     
     if (!externalApiKey) {
       return res.status(401).json({ error: 'Invalid API key' });
@@ -116,8 +116,8 @@ let lastUsedApiKeyIndex = -1;
 async function getBestApiKey(): Promise<{ key: string; apiKeyId?: string } | null> {
   try {
     console.log('🔍 Looking for API key with credits...');
-    // Using mysqlStorage directly
-    const activeKeys = await mysqlStorage.getActiveApiKeys();
+    const storageInstance = await storage();
+    const activeKeys = await storageInstance.getActiveApiKeys();
     console.log(`📋 Found ${activeKeys.length} active keys in database`);
     
     // If no active keys in database, check environment variables
@@ -145,7 +145,7 @@ async function getBestApiKey(): Promise<{ key: string; apiKeyId?: string } | nul
       // Update credits in database if cache was refreshed
       const cached = creditCache.get(dbApiKey.apiKey);
       if (cached && (Date.now() - cached.lastChecked) < 1000) { // Recently updated
-        await mysqlStorage.updateApiKey(dbApiKey.id, {
+        await storageInstance.updateApiKey(dbApiKey.id, {
           credits,
           lastChecked: new Date(),
           isActive: credits > 0
@@ -226,7 +226,7 @@ async function enhanceVideo(generationId: string, videoUrl: string, storageInsta
     }
     
     // Update generation with enhanced video
-    await mysqlStorage.updateVideoGeneration(generationId, {
+    await storageInstance.updateVideoGeneration(generationId, {
       status: "completed",
       enhancementStatus: "completed",
       enhancedResultUrls: [outputUrl],
@@ -240,7 +240,7 @@ async function enhanceVideo(generationId: string, videoUrl: string, storageInsta
     console.error(`❌ Video enhancement failed for generation ${generationId}:`, error);
     
     // Update generation with enhancement failure
-    await mysqlStorage.updateVideoGeneration(generationId, {
+    await storageInstance.updateVideoGeneration(generationId, {
       status: "completed", // Original video is still available
       enhancementStatus: "failed",
       enhancementErrorMessage: error instanceof Error ? error.message : "Enhancement failed",
@@ -260,13 +260,13 @@ async function startAutoRefresh() {
   const refreshCredits = async () => {
     try {
       console.log('🔄 Auto-refreshing API key credits...');
-      // Using mysqlStorage directly
-      const allApiKeys = await mysqlStorage.getAllApiKeys();
+      const storageInstance = await storage();
+      const allApiKeys = await storageInstance.getAllApiKeys();
       
       for (const apiKey of allApiKeys) {
         try {
           const credits = await checkApiCredits(apiKey.apiKey);
-          await mysqlStorage.updateApiKey(apiKey.id, {
+          await storageInstance.updateApiKey(apiKey.id, {
             credits,
             lastChecked: new Date(),
             isActive: credits > 0 ? apiKey.isActive : false
@@ -512,10 +512,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       
       // Create reward claim and get bypass link from LinkBulks/Link4m
-      const result = await mysqlStorage.createRewardClaim(req.user.id);
+      const result = await storageInstance.createRewardClaim(req.user.id);
       
       if ('error' in result) {
         return res.status(429).json({ 
@@ -545,8 +545,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      // Using mysqlStorage directly
-      const rewardClaims = await mysqlStorage.getRewardClaims(req.user.id);
+      const storageInstance = await storage();
+      const rewardClaims = await storageInstance.getRewardClaims(req.user.id);
       
       res.json(rewardClaims);
     } catch (error) {
@@ -562,8 +562,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      // Using mysqlStorage directly
-      const stats = await mysqlStorage.getDailyLinkUsageStats();
+      const storageInstance = await storage();
+      const stats = await storageInstance.getDailyLinkUsageStats();
       
       res.json(stats);
     } catch (error) {
@@ -576,9 +576,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/claim-reward/:token", async (req: Request, res: Response) => {
     try {
       const { token } = req.params;
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       
-      const result = await mysqlStorage.claimReward(token);
+      const result = await storageInstance.claimReward(token);
       
       if (result.success) {
         // Redirect to success page or show success message
@@ -754,7 +754,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Authentication required" });
       }
       
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       const user = req.user;
       
       if (!user) {
@@ -775,7 +775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create video generation record  
-      const generation = await mysqlStorage.createVideoGeneration({
+      const generation = await storageInstance.createVideoGeneration({
         ...validatedData,
         userId: user.id,
       }, totalCredits);
@@ -807,7 +807,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = await response.json();
       
       if (data.code !== 200) {
-        await mysqlStorage.updateVideoGeneration(generation.id, {
+        await storageInstance.updateVideoGeneration(generation.id, {
           status: "failed",
           errorMessage: data.msg || 'Generation failed',
         });
@@ -815,7 +815,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Update generation with task ID (VEO3 API automatically deducts credits)
-      await mysqlStorage.updateVideoGeneration(generation.id, {
+      await storageInstance.updateVideoGeneration(generation.id, {
         taskId: data.data.taskId,
         status: "processing",
       });
@@ -838,7 +838,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Authentication required" });
       }
       
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       const user = req.user;
       
       if (!user) {
@@ -863,7 +863,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalCredits = 3; // Lower cost for generative fill
 
       // Create generation record  
-      const generation = await mysqlStorage.createVideoGeneration({
+      const generation = await storageInstance.createVideoGeneration({
         ...validatedData,
         userId: user.id,
       }, totalCredits);
@@ -895,7 +895,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('🎨 ModelsLab API Response:', JSON.stringify(data, null, 2));
       
       if (data.status !== "success") {
-        await mysqlStorage.updateVideoGeneration(generation.id, {
+        await storageInstance.updateVideoGeneration(generation.id, {
           status: "failed",
           errorMessage: data.message || 'Generative fill failed',
         });
@@ -904,7 +904,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update generation with result URLs (ModelsLab returns immediate results)
       const resultUrls = data.output || [];
-      await mysqlStorage.updateVideoGeneration(generation.id, {
+      await storageInstance.updateVideoGeneration(generation.id, {
         status: "completed",
         resultUrls,
         completedAt: new Date(),
@@ -929,7 +929,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Authentication required" });
       }
       
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       const user = req.user;
       
       if (!user) {
@@ -959,7 +959,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create object replacement record  
-      const replacement = await mysqlStorage.createObjectReplacement({
+      const replacement = await storageInstance.createObjectReplacement({
         prompt: validatedData.prompt,
         fileName: validatedData.fileName,
         inputImageUrl: validatedData.inputImageUrl,
@@ -967,10 +967,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }, user.id);
 
       // Deduct credits from user
-      await mysqlStorage.updateUserCredits(user.id, user.credits - totalCredits);
+      await storageInstance.updateUserCredits(user.id, user.credits - totalCredits);
 
       // Get available PhotAI API keys
-      const photaiKeys = await mysqlStorage.getPhotAIApiKeys();
+      const photaiKeys = await storageInstance.getPhotAIApiKeys();
       console.log(`🔑 Found ${photaiKeys.length} available PhotAI API keys`);
       
       if (photaiKeys.length === 0) {
@@ -1020,19 +1020,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         if (!response.ok || data.status_code !== 200 || data.message !== "success") {
-          await mysqlStorage.updateObjectReplacement(replacement.id, {
+          await storageInstance.updateObjectReplacement(replacement.id, {
             status: "failed",
             errorMessage: data.error || data.message || 'Object replacement failed',
           });
           // Refund credits
-          await mysqlStorage.updateUserCredits(user.id, user.credits);
+          await storageInstance.updateUserCredits(user.id, user.credits);
           throw new Error(data.error || data.message || 'Object replacement failed');
         }
 
         // API v3 returns immediate results with output_image
         if (data.output_image) {
           const resultImageUrl = data.output_image;
-          await mysqlStorage.updateObjectReplacement(replacement.id, {
+          await storageInstance.updateObjectReplacement(replacement.id, {
             status: "completed",
             resultImageUrl,
             completedAt: new Date(),
@@ -1108,13 +1108,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           if (response.ok && data.status_code === 200 && data.message === "success") {
             // Success! Increment API key usage
-            await mysqlStorage.incrementExternalApiKeyUsage(apiKeyRecord.id, 1);
+            await storageInstance.incrementExternalApiKeyUsage(apiKeyRecord.id, 1);
             usedApiKey = apiKeyRecord;
             
             // API v3 returns immediate results with output_image
             if (data.output_image) {
               const resultImageUrl = data.output_image;
-              await mysqlStorage.updateObjectReplacement(replacement.id, {
+              await storageInstance.updateObjectReplacement(replacement.id, {
                 status: "completed",
                 resultImageUrl,
                 completedAt: new Date(),
@@ -1142,12 +1142,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // If we get here, all API keys failed
-      await mysqlStorage.updateObjectReplacement(replacement.id, {
+      await storageInstance.updateObjectReplacement(replacement.id, {
         status: "failed",
         errorMessage: lastError || 'All PhotAI API keys failed',
       });
       // Refund credits
-      await mysqlStorage.updateUserCredits(user.id, user.credits);
+      await storageInstance.updateUserCredits(user.id, user.credits);
       throw new Error(lastError || 'All PhotAI API keys failed');
 
     } catch (error) {
@@ -1163,8 +1163,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      // Using mysqlStorage directly
-      let replacements = await mysqlStorage.getUserObjectReplacements(req.user.id);
+      const storageInstance = await storage();
+      let replacements = await storageInstance.getUserObjectReplacements(req.user.id);
       
       // Check status for pending replacements
       for (const replacement of replacements) {
@@ -1195,7 +1195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const timeDiffMinutes = (currentTime - createdTime) / (1000 * 60);
               
               if (timeDiffMinutes > 10) { // If pending for more than 10 minutes
-                await mysqlStorage.updateObjectReplacement(replacement.id, {
+                await storageInstance.updateObjectReplacement(replacement.id, {
                   status: "failed",
                   errorMessage: "Processing timeout - PhotAI API status checking endpoint unavailable",
                   completedAt: new Date(),
@@ -1214,7 +1214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Fetch updated replacements
-      replacements = await mysqlStorage.getUserObjectReplacements(req.user.id);
+      replacements = await storageInstance.getUserObjectReplacements(req.user.id);
       
       res.json(replacements);
     } catch (error) {
@@ -1230,7 +1230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Authentication required" });
       }
       
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       const user = req.user;
       
       if (!user) {
@@ -1276,7 +1276,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create operation record  
-      const operation = await mysqlStorage.createPhotaiOperation({
+      const operation = await storageInstance.createPhotaiOperation({
         toolType: validatedData.toolType,
         fileName: validatedData.fileName,
         prompt: validatedData.prompt,
@@ -1288,10 +1288,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }, user.id);
 
       // Deduct credits from user
-      await mysqlStorage.updateUserCredits(user.id, user.credits - totalCredits);
+      await storageInstance.updateUserCredits(user.id, user.credits - totalCredits);
 
       // Get available PhotAI API keys
-      const photaiKeys = await mysqlStorage.getPhotAIApiKeys();
+      const photaiKeys = await storageInstance.getPhotAIApiKeys();
       console.log(`🔑 Found ${photaiKeys.length} available PhotAI API keys`);
       
       // API endpoint mapping for each tool type (updated for Phot.AI API v3)
@@ -1366,7 +1366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // API v3 returns immediate results with output_image
           if (data.output_image) {
             const resultImageUrl = data.output_image;
-            await mysqlStorage.updatePhotaiOperation(operation.id, {
+            await storageInstance.updatePhotaiOperation(operation.id, {
               status: "completed",
               resultImageUrl,
               completedAt: new Date(),
@@ -1429,13 +1429,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           if (response.ok && data.status_code === 200 && data.message === "success") {
-            await mysqlStorage.incrementExternalApiKeyUsage(apiKeyRecord.id, 1);
+            await storageInstance.incrementExternalApiKeyUsage(apiKeyRecord.id, 1);
             usedApiKey = apiKeyRecord;
             
             // API v3 returns immediate results with output_image
             if (data.output_image) {
               const resultImageUrl = data.output_image;
-              await mysqlStorage.updatePhotaiOperation(operation.id, {
+              await storageInstance.updatePhotaiOperation(operation.id, {
                 status: "completed",
                 resultImageUrl,
                 completedAt: new Date(),
@@ -1463,11 +1463,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // If we get here, all API keys failed
-      await mysqlStorage.updatePhotaiOperation(operation.id, {
+      await storageInstance.updatePhotaiOperation(operation.id, {
         status: "failed",
         errorMessage: lastError || 'All PhotAI API keys failed',
       });
-      await mysqlStorage.updateUserCredits(user.id, user.credits);
+      await storageInstance.updateUserCredits(user.id, user.credits);
       throw new Error(lastError || 'All PhotAI API keys failed');
 
     } catch (error) {
@@ -1529,8 +1529,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      // Using mysqlStorage directly
-      let operations = await mysqlStorage.getUserPhotaiOperations(req.user.id);
+      const storageInstance = await storage();
+      let operations = await storageInstance.getUserPhotaiOperations(req.user.id);
       
       // Check status for pending operations
       for (const operation of operations) {
@@ -1556,7 +1556,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const timeDiffMinutes = (currentTime - createdTime) / (1000 * 60);
               
               if (timeDiffMinutes > 10) {
-                await mysqlStorage.updatePhotaiOperation(operation.id, {
+                await storageInstance.updatePhotaiOperation(operation.id, {
                   status: "failed",
                   errorMessage: "Processing timeout - PhotAI API status checking endpoint unavailable",
                   completedAt: new Date(),
@@ -1574,7 +1574,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Fetch updated operations
-      operations = await mysqlStorage.getUserPhotaiOperations(req.user.id);
+      operations = await storageInstance.getUserPhotaiOperations(req.user.id);
       
       res.json(operations);
     } catch (error) {
@@ -1591,7 +1591,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get ANY API key (even with 0 credits) for status checking
       // Status checking doesn't consume credits, just needs valid API key
-      const allApiKeys = await mysqlStorage.getAllApiKeys();
+      const storageService = await storage();
+      const allApiKeys = await storageService.getAllApiKeys();
       
       if (allApiKeys.length === 0) {
         return res.status(503).json({ 
@@ -1607,10 +1608,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const apiKeyData = { key: apiKey.apiKey, credits: apiKey.credits };
       
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       let generation;
       try {
-        generation = await mysqlStorage.getVideoGenerationByTaskId(taskId);
+        generation = await storageInstance.getVideoGenerationByTaskId(taskId);
       } catch (dbError) {
         console.error(`❌ Database error when fetching generation ${taskId}:`, dbError);
         return res.status(500).json({ message: "Database error" });
@@ -1625,7 +1626,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (ageInSeconds > 480 && generation.status === "processing") {
           console.log(`⏰ Video ${taskId} has been processing for ${Math.round(ageInSeconds)}s (>${Math.round(480)}s timeout) - marking as failed`);
           
-          await mysqlStorage.updateVideoGeneration(generation.id, {
+          await storageInstance.updateVideoGeneration(generation.id, {
             status: "failed",
             errorMessage: "Video đã vượt quá thời gian xử lý bình thường (8 phút). Có thể STLIX đang quá tải hoặc có lỗi xảy ra.",
             completedAt: new Date(),
@@ -1714,7 +1715,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             technicalMessage = `Video expired: ${errorData.msg || errorData.message}`;
           }
           
-          await mysqlStorage.updateVideoGeneration(generation.id, {
+          await storageInstance.updateVideoGeneration(generation.id, {
             status: "failed",
             errorMessage: technicalMessage,
           });
@@ -1743,7 +1744,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           if (ageInMinutes > 8) {
             console.log(`⏰ Video ${taskId} is ${Math.round(ageInMinutes)} minutes old - marking as failed due to timeout`);
-            await mysqlStorage.updateVideoGeneration(generation.id, {
+            await storageInstance.updateVideoGeneration(generation.id, {
               status: "failed",
               errorMessage: "Video generation timed out - VEO3 API returned no data after 8 minutes",
             });
@@ -1782,7 +1783,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (generation.model === "veo3" && generation.enhancementStatus === "none" && resultUrls.length > 0) {
             // Start enhancement process
             status = "enhancing";
-            await mysqlStorage.updateVideoGeneration(generation.id, {
+            await storageInstance.updateVideoGeneration(generation.id, {
               status,
               resultUrls,
               completedAt,
@@ -1791,11 +1792,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
             
             // Trigger enhancement in background
-            enhanceVideo(generation.id, resultUrls[0], mysqlStorage);
+            enhanceVideo(generation.id, resultUrls[0], storageInstance);
           } else {
             // No enhancement needed or already done
             status = "completed";
-            await mysqlStorage.updateVideoGeneration(generation.id, {
+            await storageInstance.updateVideoGeneration(generation.id, {
               status,
               resultUrls,
               completedAt,
@@ -1815,7 +1816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           status = "failed";
           errorMessage = data.data.message || "Generation failed";
           console.log(`❌ Video ${taskId} failed: ${errorMessage}`);
-          await mysqlStorage.updateVideoGeneration(generation.id, {
+          await storageInstance.updateVideoGeneration(generation.id, {
             status,
             errorMessage,
           });
@@ -1867,10 +1868,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error(data.msg || 'Failed to get 1080p video');
       }
 
-      // Using mysqlStorage directly
-      const generation = await mysqlStorage.getVideoGenerationByTaskId(taskId);
+      const storageInstance = await storage();
+      const generation = await storageInstance.getVideoGenerationByTaskId(taskId);
       if (generation) {
-        await mysqlStorage.updateVideoGeneration(generation.id, {
+        await storageInstance.updateVideoGeneration(generation.id, {
           hdResultUrl: data.data.resultUrl,
         });
       }
@@ -1938,8 +1939,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/settings", async (req, res) => {
     try {
       const { key, value } = req.body;
-      // Using mysqlStorage directly
-      const setting = await mysqlStorage.setSetting(key, value);
+      const storageInstance = await storage();
+      const setting = await storageInstance.setSetting(key, value);
       res.json(setting);
     } catch (error) {
       console.error('Settings save error:', error);
@@ -1950,8 +1951,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Check VEO3 Premium model status
   app.get("/api/model-status/veo3-premium", async (req, res) => {
     try {
-      // Using mysqlStorage directly
-      const setting = await mysqlStorage.getSetting("VEO3_PREMIUM_ENABLED");
+      const storageInstance = await storage();
+      const setting = await storageInstance.getSetting("VEO3_PREMIUM_ENABLED");
       const isEnabled = setting?.value === "true";
       
       res.json({ 
@@ -1967,8 +1968,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin API Keys management
   app.get("/api/admin/api-keys", async (req, res) => {
     try {
-      // Using mysqlStorage directly
-      const apiKeys = await mysqlStorage.getAllApiKeys();
+      const storageInstance = await storage();
+      const apiKeys = await storageInstance.getAllApiKeys();
       res.json(apiKeys);
     } catch (error) {
       console.error('API Keys fetch error:', error);
@@ -1978,18 +1979,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/admin/api-keys", async (req, res) => {
     try {
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       const apiKeyData = req.body;
       
       // Create API key first
-      const apiKey = await mysqlStorage.createApiKey(apiKeyData);
+      const apiKey = await storageInstance.createApiKey(apiKeyData);
       
       // Immediately check credits for the new API key
       console.log(`Checking credits for new API key: ${apiKeyData.name}`);
       const credits = await checkApiCredits(apiKeyData.apiKey);
       
       // Update the API key with actual credits
-      const updatedApiKey = await mysqlStorage.updateApiKey(apiKey.id, {
+      const updatedApiKey = await storageInstance.updateApiKey(apiKey.id, {
         credits,
         lastChecked: new Date(),
         isActive: credits > 0
@@ -2005,10 +2006,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/admin/api-keys/:id", async (req, res) => {
     try {
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       const { id } = req.params;
       const updates = req.body;
-      const apiKey = await mysqlStorage.updateApiKey(id, updates);
+      const apiKey = await storageInstance.updateApiKey(id, updates);
       
       if (!apiKey) {
         return res.status(404).json({ message: "API key not found" });
@@ -2023,9 +2024,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/admin/api-keys/:id", async (req, res) => {
     try {
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       const { id } = req.params;
-      const success = await mysqlStorage.deleteApiKey(id);
+      const success = await storageInstance.deleteApiKey(id);
       
       if (!success) {
         return res.status(404).json({ message: "API key not found" });
@@ -2041,11 +2042,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Toggle API key status
   app.put("/api/admin/api-keys/:id/toggle", async (req, res) => {
     try {
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       const { id } = req.params;
       const { isActive } = req.body;
       
-      const apiKey = await mysqlStorage.updateApiKey(id, { isActive });
+      const apiKey = await storageInstance.updateApiKey(id, { isActive });
       
       if (!apiKey) {
         return res.status(404).json({ message: "API key not found" });
@@ -2061,13 +2062,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Check credits for all API keys and update database
   app.post("/api/admin/check-credits", async (req, res) => {
     try {
-      // Using mysqlStorage directly
-      const allApiKeys = await mysqlStorage.getAllApiKeys();
+      const storageInstance = await storage();
+      const allApiKeys = await storageInstance.getAllApiKeys();
       const results = [];
       
       for (const apiKey of allApiKeys) {
         const credits = await checkApiCredits(apiKey.apiKey);
-        const updatedApiKey = await mysqlStorage.updateApiKey(apiKey.id, {
+        const updatedApiKey = await storageInstance.updateApiKey(apiKey.id, {
           credits,
           lastChecked: new Date(),
           isActive: credits > 0 ? apiKey.isActive : false
@@ -2110,8 +2111,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get API keys summary for dashboard
   app.get("/api/admin/api-keys-summary", async (req, res) => {
     try {
-      // Using mysqlStorage directly
-      const allApiKeys = await mysqlStorage.getAllApiKeys();
+      const storageInstance = await storage();
+      const allApiKeys = await storageInstance.getAllApiKeys();
       
       const summary = {
         totalKeys: allApiKeys.length,
@@ -2219,8 +2220,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin endpoints for managing external API keys
   app.get("/api/admin/external-api-keys", async (req, res) => {
     try {
-      // Using mysqlStorage directly
-      const externalApiKeys = await mysqlStorage.getUserExternalApiKeys('admin'); // Get all for admin view
+      const storageInstance = await storage();
+      const externalApiKeys = await storageInstance.getUserExternalApiKeys('admin'); // Get all for admin view
       res.json(externalApiKeys);
     } catch (error) {
       console.error('Get external API keys error:', error);
@@ -2236,8 +2237,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "keyName is required" });
       }
       
-      // Using mysqlStorage directly
-      const externalApiKey = await mysqlStorage.createExternalApiKey({
+      const storageInstance = await storage();
+      const externalApiKey = await storageInstance.createExternalApiKey({
         keyName,
         apiType: "veo3" as const,
         userId: userId || null,
@@ -2262,8 +2263,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (typeof creditsLimit === 'number') updates.creditsLimit = creditsLimit;
       if (typeof keyName === 'string') updates.keyName = keyName;
       
-      // Using mysqlStorage directly
-      const updatedKey = await mysqlStorage.updateExternalApiKey(id, updates);
+      const storageInstance = await storage();
+      const updatedKey = await storageInstance.updateExternalApiKey(id, updates);
       
       if (!updatedKey) {
         return res.status(404).json({ message: "External API key not found" });
@@ -2279,9 +2280,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // PhotAI API Keys Management
   app.get("/api/admin/photai-api-keys", async (req, res) => {
     try {
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       // Get all PhotAI API keys using the dedicated method
-      const photaiKeys = await mysqlStorage.getPhotAIApiKeys();
+      const photaiKeys = await storageInstance.getPhotAIApiKeys();
       res.json(photaiKeys);
     } catch (error) {
       console.error('Get PhotAI API keys error:', error);
@@ -2323,9 +2324,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: `Failed to validate PhotAI API key: ${error?.message || 'Unknown error'}` });
       }
       
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       // Store as external API key with metadata to identify as PhotAI
-      const photaiApiKey = await mysqlStorage.createExternalApiKey({
+      const photaiApiKey = await storageInstance.createExternalApiKey({
         keyName: `[PhotAI] ${keyName}`,
         apiType: "photai" as const,
         userId: null,
@@ -2334,7 +2335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Override the generated API key with the actual PhotAI key
-      await mysqlStorage.updateExternalApiKey(photaiApiKey.id, {
+      await storageInstance.updateExternalApiKey(photaiApiKey.id, {
         apiKey: apiKey
       });
       
@@ -2355,8 +2356,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (typeof creditsLimit === 'number') updates.creditsLimit = creditsLimit;
       if (typeof keyName === 'string') updates.keyName = `[PhotAI] ${keyName}`;
       
-      // Using mysqlStorage directly
-      const updatedKey = await mysqlStorage.updateExternalApiKey(id, updates);
+      const storageInstance = await storage();
+      const updatedKey = await storageInstance.updateExternalApiKey(id, updates);
       
       if (!updatedKey) {
         return res.status(404).json({ message: "PhotAI API key not found" });
@@ -2373,8 +2374,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       
-      // Using mysqlStorage directly
-      const success = await mysqlStorage.deleteExternalApiKey(id);
+      const storageInstance = await storage();
+      const success = await storageInstance.deleteExternalApiKey(id);
       
       if (!success) {
         return res.status(404).json({ message: "PhotAI API key not found" });
@@ -2391,8 +2392,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       
-      // Using mysqlStorage directly
-      const updatedKey = await mysqlStorage.resetMonthlyUsage(id);
+      const storageInstance = await storage();
+      const updatedKey = await storageInstance.resetMonthlyUsage(id);
       
       if (!updatedKey) {
         return res.status(404).json({ message: "External API key not found" });
@@ -2427,10 +2428,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       
       // Create video generation record
-      const generation = await mysqlStorage.createVideoGeneration({
+      const generation = await storageInstance.createVideoGeneration({
         userId: externalApiKey.userId,
         type: "text-to-video",
         prompt,
@@ -2441,12 +2442,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }, creditsNeeded);
       
       // Increment API key usage
-      await mysqlStorage.incrementExternalApiKeyUsage(externalApiKey.id, creditsNeeded);
+      await storageInstance.incrementExternalApiKeyUsage(externalApiKey.id, creditsNeeded);
       
       // Get best internal API key for VEO3 API
       const internalApiKey = await getBestApiKey();
       if (!internalApiKey) {
-        await mysqlStorage.updateVideoGeneration(generation.id, {
+        await storageInstance.updateVideoGeneration(generation.id, {
           status: "failed",
           errorMessage: "No API key with sufficient credits available"
         });
@@ -2474,7 +2475,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error(data.message || 'VEO3 API request failed');
         }
         
-        await mysqlStorage.updateVideoGeneration(generation.id, {
+        await storageInstance.updateVideoGeneration(generation.id, {
           taskId: data.data.task_id,
           status: "processing"
         });
@@ -2489,7 +2490,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
       } catch (error: any) {
         console.error('VEO3 API error:', error);
-        await mysqlStorage.updateVideoGeneration(generation.id, {
+        await storageInstance.updateVideoGeneration(generation.id, {
           status: "failed",
           errorMessage: error.message
         });
@@ -2528,10 +2529,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Using mysqlStorage directly
+      const storageInstance = await storage();
       
       // Create video generation record
-      const generation = await mysqlStorage.createVideoGeneration({
+      const generation = await storageInstance.createVideoGeneration({
         userId: externalApiKey.userId,
         type: "image-to-video",
         prompt,
@@ -2541,12 +2542,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }, creditsNeeded);
       
       // Increment API key usage
-      await mysqlStorage.incrementExternalApiKeyUsage(externalApiKey.id, creditsNeeded);
+      await storageInstance.incrementExternalApiKeyUsage(externalApiKey.id, creditsNeeded);
       
       // Get best internal API key for VEO3 API
       const internalApiKey = await getBestApiKey();
       if (!internalApiKey) {
-        await mysqlStorage.updateVideoGeneration(generation.id, {
+        await storageInstance.updateVideoGeneration(generation.id, {
           status: "failed",
           errorMessage: "No API key with sufficient credits available"
         });
@@ -2574,7 +2575,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const imageUrl = uploadData.data.url;
         
         // Update generation with image URL
-        await mysqlStorage.updateVideoGeneration(generation.id, {
+        await storageInstance.updateVideoGeneration(generation.id, {
           imageUrl
         });
         
@@ -2599,7 +2600,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error(data.message || 'VEO3 API request failed');
         }
         
-        await mysqlStorage.updateVideoGeneration(generation.id, {
+        await storageInstance.updateVideoGeneration(generation.id, {
           taskId: data.data.task_id,
           status: "processing"
         });
@@ -2615,7 +2616,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
       } catch (error: any) {
         console.error('VEO3 API error:', error);
-        await mysqlStorage.updateVideoGeneration(generation.id, {
+        await storageInstance.updateVideoGeneration(generation.id, {
           status: "failed",
           errorMessage: error.message
         });
@@ -2634,8 +2635,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { taskId } = req.params;
       const externalApiKey = req.externalApiKey!;
       
-      // Using mysqlStorage directly
-      const generation = await mysqlStorage.getVideoGenerationByTaskId(taskId);
+      const storageInstance = await storage();
+      const generation = await storageInstance.getVideoGenerationByTaskId(taskId);
       
       if (!generation) {
         return res.status(404).json({ error: 'Generation not found' });
@@ -2661,7 +2662,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             if (response.ok && data.data?.status) {
               if (data.data.status === "completed" && data.data.output?.url) {
-                await mysqlStorage.updateVideoGeneration(generation.id, {
+                await storageInstance.updateVideoGeneration(generation.id, {
                   status: "completed",
                   resultUrls: [data.data.output.url],
                   completedAt: new Date()
@@ -2669,7 +2670,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 generation.status = "completed";
                 generation.resultUrls = [data.data.output.url];
               } else if (data.data.status === "failed") {
-                await mysqlStorage.updateVideoGeneration(generation.id, {
+                await storageInstance.updateVideoGeneration(generation.id, {
                   status: "failed",
                   errorMessage: data.data.message || "Generation failed"
                 });

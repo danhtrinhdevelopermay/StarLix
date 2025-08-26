@@ -95,6 +95,45 @@ export class MySQLStorage {
       return bTime - aTime;
     });
   }
+
+  // Placeholder methods for compatibility - not fully implemented
+  async getSetting(key: string) {
+    // For now, return default values for essential settings
+    if (key === "VEO3_PREMIUM_ENABLED") {
+      return { value: "true" }; // Enable VEO3 by default
+    }
+    return null;
+  }
+
+  async setSetting(key: string, value: string) {
+    // Placeholder implementation
+    return { key, value };
+  }
+
+  async getAllSettings() {
+    // Return empty array for now
+    return [];
+  }
+
+  async getAllApiKeys() {
+    // Return empty array for now - API keys not implemented in MySQL yet
+    return [];
+  }
+
+  async createApiKey(apiKeyData: any) {
+    // Placeholder implementation
+    return { id: crypto.randomUUID(), ...apiKeyData };
+  }
+
+  async updateApiKey(id: string, updates: any) {
+    // Placeholder implementation
+    return { id, ...updates };
+  }
+
+  async createRewardClaim(userId: string) {
+    // Placeholder implementation - not fully implemented yet
+    return { error: "Tính năng nhận credit chưa được hỗ trợ với MySQL database" };
+  }
 }
 
 // Create instance
