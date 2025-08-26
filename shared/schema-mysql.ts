@@ -1,7 +1,20 @@
 import { sql } from "drizzle-orm";
-import { mysqlTable, varchar, text, int, timestamp, boolean, json } from "drizzle-orm/mysql-core";
+import { mysqlTable, varchar, text, int, timestamp, boolean, json, customType } from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Custom LONGBLOB type for storing binary data
+const longblob = customType<{ data: Buffer }>({
+  dataType() {
+    return 'longblob';
+  },
+  fromDriver(value: any): Buffer {
+    return Buffer.isBuffer(value) ? value : Buffer.from(value);
+  },
+  toDriver(value: Buffer): Buffer {
+    return value;
+  },
+});
 
 export const users = mysqlTable("users", {
   id: varchar("id", { length: 255 }).primaryKey().default(sql`(UUID())`),
@@ -152,6 +165,23 @@ export const photaiOperations = mysqlTable("photai_operations", {
   completedAt: timestamp("completed_at"),
 });
 
+// Uploaded Images stored in database
+export const uploadedImages = mysqlTable("uploaded_images", {
+  id: varchar("id", { length: 255 }).primaryKey().default(sql`(UUID())`),
+  userId: varchar("user_id", { length: 255 }),
+  fileName: text("file_name").notNull(),
+  originalName: text("original_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  fileSize: int("file_size").notNull(), // Size in bytes
+  imageData: longblob("image_data").notNull(), // Binary image data
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertUploadedImageSchema = createInsertSchema(uploadedImages).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Schema validation remains the same as original
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
@@ -185,3 +215,5 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertVideoGeneration = z.infer<typeof insertVideoGenerationSchema>;
 export type VideoGeneration = typeof videoGenerations.$inferSelect;
+export type InsertUploadedImage = z.infer<typeof insertUploadedImageSchema>;
+export type UploadedImage = typeof uploadedImages.$inferSelect;

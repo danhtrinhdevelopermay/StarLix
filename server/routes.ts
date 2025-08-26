@@ -645,7 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Upload image for image-to-video generation
+  // Upload image for image-to-video generation - now saves to database instead of file system
   app.post("/api/upload-image", upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
@@ -654,34 +654,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const apiKeyData = await getBestApiKey();
       
-      // If no API keys available, work in demo mode - save file locally
+      // If no API keys available, work in demo mode - save to database instead of local files
       if (!apiKeyData) {
-        console.log('No API keys available, working in demo mode for image upload');
-        
-        // Create uploads directory if it doesn't exist
-        const uploadsDir = path.join(process.cwd(), 'client', 'public', 'uploads');
-        
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
+        console.log('No API keys available, saving image to database');
         
         // Generate unique filename
         const timestamp = Date.now();
         const ext = path.extname(req.file.originalname);
         const filename = `image_${timestamp}${ext}`;
-        const filePath = path.join(uploadsDir, filename);
         
-        // Write file to local storage
-        fs.writeFileSync(filePath, req.file.buffer);
+        // Save image to database
+        const uploadedImage = await mysqlStorage.createUploadedImage({
+          userId: null, // No user for demo mode
+          fileName: filename,
+          originalName: req.file.originalname,
+          mimeType: req.file.mimetype,
+          fileSize: req.file.size,
+          imageData: req.file.buffer,
+        });
         
-        // Return local URL
-        const downloadUrl = `/uploads/${filename}`;
-        console.log(`Image saved locally: ${downloadUrl}`);
+        // Return database URL
+        const downloadUrl = `/api/images/${uploadedImage.id}`;
+        console.log(`Image saved to database: ${downloadUrl}`);
         
         return res.json({ downloadUrl });
       }
 
-      // Use VEO3 API if keys are available, with fallback to local storage
+      // Use VEO3 API if keys are available, with fallback to database storage
       try {
         const formData = new FormData();
         formData.append('file', req.file.buffer, {
@@ -712,30 +711,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         res.json({ downloadUrl: data.data.downloadUrl });
       } catch (veoError: any) {
-        console.log('VEO3 upload failed, falling back to local storage:', veoError?.message || veoError);
+        console.log('VEO3 upload failed, falling back to database storage:', veoError?.message || veoError);
         
-        // Fallback to local storage
-        const uploadsDir = path.join(process.cwd(), 'client', 'public', 'uploads');
-        
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        
+        // Fallback to database storage instead of local files
         const timestamp = Date.now();
         const ext = path.extname(req.file.originalname);
         const filename = `image_${timestamp}${ext}`;
-        const filePath = path.join(uploadsDir, filename);
         
-        fs.writeFileSync(filePath, req.file.buffer);
+        const uploadedImage = await mysqlStorage.createUploadedImage({
+          userId: null, // No user for demo mode
+          fileName: filename,
+          originalName: req.file.originalname,
+          mimeType: req.file.mimetype,
+          fileSize: req.file.size,
+          imageData: req.file.buffer,
+        });
         
-        const downloadUrl = `/uploads/${filename}`;
-        console.log(`Image saved locally as fallback: ${downloadUrl}`);
+        const downloadUrl = `/api/images/${uploadedImage.id}`;
+        console.log(`Image saved to database as fallback: ${downloadUrl}`);
         
         res.json({ downloadUrl });
       }
     } catch (error) {
       console.error('Upload error:', error);
       res.status(500).json({ message: "Failed to upload image" });
+    }
+  });
+
+  // Serve images from database
+  app.get("/api/images/:id", async (req, res) => {
+    try {
+      const imageId = req.params.id;
+      const image = await mysqlStorage.getUploadedImage(imageId);
+      
+      if (!image) {
+        return res.status(404).json({ message: "Image not found" });
+      }
+      
+      // Set appropriate headers
+      res.set({
+        'Content-Type': image.mimeType,
+        'Content-Length': image.fileSize.toString(),
+        'Cache-Control': 'public, max-age=86400', // Cache for 1 day
+      });
+      
+      // Send binary data
+      res.send(image.imageData);
+    } catch (error) {
+      console.error('Error serving image:', error);
+      res.status(500).json({ message: "Failed to serve image" });
     }
   });
 

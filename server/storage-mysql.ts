@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { users, videoGenerations } from "../shared/schema-mysql";
+import { users, videoGenerations, uploadedImages } from "../shared/schema-mysql";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import * as crypto from "crypto";
@@ -133,6 +133,57 @@ export class MySQLStorage {
   async createRewardClaim(userId: string) {
     // Placeholder implementation - not fully implemented yet
     return { error: "Tính năng nhận credit chưa được hỗ trợ với MySQL database" };
+  }
+
+  // Uploaded Images methods (database storage)
+  async createUploadedImage(imageData: {
+    userId: string | null;
+    fileName: string;
+    originalName: string;
+    mimeType: string;
+    fileSize: number;
+    imageData: Buffer;
+  }) {
+    const imageId = crypto.randomUUID();
+    
+    await db.insert(uploadedImages).values({
+      id: imageId,
+      userId: imageData.userId,
+      fileName: imageData.fileName,
+      originalName: imageData.originalName,
+      mimeType: imageData.mimeType,
+      fileSize: imageData.fileSize,
+      imageData: imageData.imageData,
+    });
+
+    // Return created image record
+    const results = await db.select().from(uploadedImages).where(eq(uploadedImages.id, imageId));
+    return results[0];
+  }
+
+  async getUploadedImage(id: string) {
+    const results = await db.select().from(uploadedImages).where(eq(uploadedImages.id, id));
+    return results[0];
+  }
+
+  async getUploadedImageByPath(fileName: string) {
+    const results = await db.select().from(uploadedImages).where(eq(uploadedImages.fileName, fileName));
+    return results[0];
+  }
+
+  async getUserUploadedImages(userId: string) {
+    const results = await db.select().from(uploadedImages).where(eq(uploadedImages.userId, userId));
+    return results;
+  }
+
+  async deleteUploadedImage(id: string) {
+    try {
+      await db.delete(uploadedImages).where(eq(uploadedImages.id, id));
+      return true;
+    } catch (error) {
+      console.error('Error deleting uploaded image:', error);
+      return false;
+    }
   }
 }
 

@@ -1,6 +1,6 @@
-import { type User, type InsertUser, type VideoGeneration, type InsertVideoGeneration } from "../shared/schema-mysql";
+import { type User, type InsertUser, type VideoGeneration, type InsertVideoGeneration, type UploadedImage, type InsertUploadedImage } from "../shared/schema-mysql";
 import { db } from "./db";
-import { users, videoGenerations, apiKeys, settings, externalApiKeys, rewardClaims, dailyLinkUsage, objectReplacements, photaiOperations } from "../shared/schema-mysql";
+import { users, videoGenerations, apiKeys, settings, externalApiKeys, rewardClaims, dailyLinkUsage, objectReplacements, photaiOperations, uploadedImages } from "../shared/schema-mysql";
 import * as crypto from "crypto";
 import { eq, desc, and, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -63,6 +63,13 @@ export interface IStorage {
   // Get PhotAI API keys (shared by both object replacement and general operations)
   getPhotAIApiKeys(): Promise<ExternalApiKey[]>;
   deleteExternalApiKey(id: string): Promise<boolean>;
+  
+  // Uploaded Images methods (database storage)
+  createUploadedImage(image: InsertUploadedImage): Promise<UploadedImage>;
+  getUploadedImage(id: string): Promise<UploadedImage | undefined>;
+  getUploadedImageByPath(fileName: string): Promise<UploadedImage | undefined>;
+  getUserUploadedImages(userId: string): Promise<UploadedImage[]>;
+  deleteUploadedImage(id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {

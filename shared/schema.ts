@@ -1,7 +1,14 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, customType } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Custom bytea type for binary data storage
+const bytea = customType<{ data: Buffer; notNull: false; default: false }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -158,6 +165,18 @@ export const photaiOperations = pgTable("photai_operations", {
   completedAt: timestamp("completed_at"),
 });
 
+// Uploaded Images stored in database
+export const uploadedImages = pgTable("uploaded_images", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id),
+  fileName: text("file_name").notNull(),
+  originalName: text("original_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  fileSize: integer("file_size").notNull(), // Size in bytes
+  imageData: bytea("image_data").notNull(), // Binary image data
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -285,6 +304,11 @@ export const insertPhotaiOperationSchema = createInsertSchema(photaiOperations).
   upscaleMethod: z.enum(["x2", "x4", "x8"]).optional(),
 });
 
+export const insertUploadedImageSchema = createInsertSchema(uploadedImages).omit({
+  id: true,
+  createdAt: true,
+});
+
 // API request schema for external API
 export const externalApiGenerateSchema = z.object({
   prompt: z.string().min(10, "Prompt must be at least 10 characters").max(500, "Prompt must be less than 500 characters"),
@@ -316,3 +340,5 @@ export type InsertPhotaiOperation = z.infer<typeof insertPhotaiOperationSchema>;
 export type PhotoaiOperation = typeof photaiOperations.$inferSelect;
 export type InsertDailyLinkUsage = z.infer<typeof insertDailyLinkUsageSchema>;
 export type DailyLinkUsage = typeof dailyLinkUsage.$inferSelect;
+export type InsertUploadedImage = z.infer<typeof insertUploadedImageSchema>;
+export type UploadedImage = typeof uploadedImages.$inferSelect;
